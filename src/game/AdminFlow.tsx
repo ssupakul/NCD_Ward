@@ -16,6 +16,14 @@ import {
   tryAdminLogin,
 } from "./admin";
 import {
+  deletePlayer,
+  getLeaderboard,
+  loadProfilesIndex,
+  resetAllPlayerStats,
+  resetPlayerStats,
+  wipeAllPlayers,
+} from "./save";
+import {
   computeGradeThresholds,
   loadScoring,
   resetScoring,
@@ -61,6 +69,7 @@ type AdminTab =
   | "labs"
   | "actions"
   | "scoring"
+  | "players"
   | "password";
 
 function LocInputs({
@@ -219,6 +228,7 @@ export function AdminScreen() {
     { id: "labs", th: "แล็บ", en: "Labs" },
     { id: "actions", th: "ยา/แผน", en: "Treatments" },
     { id: "scoring", th: "คะแนน", en: "Scoring" },
+    { id: "players", th: "ผู้เล่น", en: "Players" },
     { id: "password", th: "รหัสผ่าน", en: "Password" },
   ];
 
@@ -272,6 +282,7 @@ export function AdminScreen() {
           {tab === "labs" ? <LabsAdmin onChange={refresh} /> : null}
           {tab === "actions" ? <ActionsAdmin onChange={refresh} /> : null}
           {tab === "scoring" ? <ScoringAdmin /> : null}
+          {tab === "players" ? <PlayersAdmin onChange={refresh} /> : null}
           {tab === "password" ? <PasswordAdmin /> : null}
         </div>
       </div>
@@ -1113,6 +1124,168 @@ function ScoringAdmin() {
           {t("บันทึกแล้ว — มีผลกับเคสถัดไป", "Saved — applies to the next case")}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function PlayersAdmin({ onChange }: { onChange: () => void }) {
+  const t = useT();
+  const hydrate = useGame((s) => s.hydrate);
+  const [msg, setMsg] = useState<string | null>(null);
+  const players = loadProfilesIndex().players;
+  const board = getLeaderboard("careerScore");
+
+  const afterReset = () => {
+    hydrate();
+    onChange();
+  };
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-muted">
+        {t(
+          "รีเซ็ตคะแนน / อันดับ / ลบผู้เล่นบนเครื่องนี้ — ไม่กระทบเคส ยา แล็บ หรือรหัสแอดมิน",
+          "Reset scores, rankings, or delete players on this device — does not affect cases, meds, labs, or admin password.",
+        )}
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          onClick={() => {
+            if (
+              !window.confirm(
+                t(
+                  "รีเซ็ตสถิติผู้เล่นทุกคนเป็นค่าเริ่มต้น? (ชื่อยังอยู่ อันดับคะแนนเป็นศูนย์)",
+                  "Reset all player stats to defaults? (Names stay; scores/ranks clear)",
+                ),
+              )
+            )
+              return;
+            const n = resetAllPlayerStats();
+            afterReset();
+            setMsg(
+              t(
+                `รีเซ็ตสถิติ ${n} คนแล้ว`,
+                `Reset stats for ${n} player(s)`,
+              ),
+            );
+          }}
+        >
+          {t("รีเซ็ตคะแนนทุกคน", "Reset all scores")}
+        </Button>
+        <Button
+          variant="danger"
+          onClick={() => {
+            if (
+              !window.confirm(
+                t(
+                  "ลบผู้เล่นทั้งหมดและอันดับบนเครื่องนี้? ต้องลงทะเบียนใหม่",
+                  "Delete ALL players and rankings on this device? Everyone must register again.",
+                ),
+              )
+            )
+              return;
+            if (
+              !window.confirm(
+                t(
+                  "ยืนยันอีกครั้ง — การกระทำนี้ย้อนกลับไม่ได้",
+                  "Confirm again — this cannot be undone",
+                ),
+              )
+            )
+              return;
+            const n = wipeAllPlayers();
+            afterReset();
+            setMsg(
+              t(
+                `ลบผู้เล่น ${n} คนแล้ว — เริ่มต้นใหม่ได้`,
+                `Wiped ${n} player(s) — ready for a fresh start`,
+              ),
+            );
+          }}
+        >
+          {t("ลบผู้เล่นทั้งหมด", "Wipe all players")}
+        </Button>
+      </div>
+
+      {msg ? <p className="text-sm text-ok">{msg}</p> : null}
+
+      {players.length === 0 ? (
+        <p className="text-muted">
+          {t("ยังไม่มีผู้เล่นลงทะเบียน", "No registered players")}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {board.map((e) => (
+            <li
+              key={e.id}
+              className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-3 py-3 shadow-[var(--shadow-border)]"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">
+                  #{e.rank} {e.name}
+                </div>
+                <div className="text-xs text-muted">
+                  {t(
+                    `คะแนน ${e.careerScore} · เวรดีสุด ${e.bestShiftScore} · คนไข้ ${e.patientsTreated} · วัน ${e.day}`,
+                    `Score ${e.careerScore} · Best shift ${e.bestShiftScore} · Patients ${e.patientsTreated} · Day ${e.day}`,
+                  )}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      t(
+                        `รีเซ็ตสถิติของ "${e.name}"?`,
+                        `Reset stats for "${e.name}"?`,
+                      ),
+                    )
+                  )
+                    return;
+                  resetPlayerStats(e.id);
+                  afterReset();
+                  setMsg(
+                    t(
+                      `รีเซ็ตสถิติของ ${e.name} แล้ว`,
+                      `Reset stats for ${e.name}`,
+                    ),
+                  );
+                }}
+              >
+                {t("รีเซ็ตคะแนน", "Reset score")}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-danger"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      t(
+                        `ลบผู้เล่น "${e.name}" ออกจากเครื่องนี้?`,
+                        `Delete player "${e.name}" from this device?`,
+                      ),
+                    )
+                  )
+                    return;
+                  deletePlayer(e.id);
+                  afterReset();
+                  setMsg(
+                    t(`ลบ ${e.name} แล้ว`, `Deleted ${e.name}`),
+                  );
+                }}
+              >
+                <Trash2 className="size-4" />
+                {t("ลบ", "Delete")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

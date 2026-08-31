@@ -267,6 +267,62 @@ export function clearSave(): void {
   clearPlayerSave(id);
 }
 
+/**
+ * Reset one player's career stats to a fresh save (keep name/profile).
+ * Preserves language preference when possible.
+ */
+export function resetPlayerStats(playerId: string, lang: Lang = "th"): void {
+  const prev = loadPlayerSave(playerId);
+  writePlayerSave(playerId, freshSave(prev?.lang ?? lang));
+  touchPlayer(playerId);
+}
+
+/**
+ * Reset career stats for every registered player (names kept).
+ * Leaderboard scores go back to zero / defaults.
+ */
+export function resetAllPlayerStats(): number {
+  const index = loadProfilesIndex();
+  for (const p of index.players) {
+    resetPlayerStats(p.id);
+  }
+  return index.players.length;
+}
+
+/**
+ * Delete every player profile + save + current session.
+ * Full wipe of multiplayer data and leaderboard on this device.
+ */
+export function wipeAllPlayers(): number {
+  if (!canUseStorage()) return 0;
+  const index = loadProfilesIndex();
+  const n = index.players.length;
+  for (const p of index.players) {
+    clearPlayerSave(p.id);
+  }
+  // Also clear any orphan keys matching player save pattern
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("ward-ncd-player-") && k.endsWith("-v1")) {
+        toRemove.push(k);
+      }
+    }
+    for (const k of toRemove) localStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+  writeProfilesIndex({ version: 1, players: [] });
+  setCurrentPlayerId(null);
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    /* ignore */
+  }
+  return n;
+}
+
 /** Leaderboard entry built from all local profiles. */
 export type LeaderboardEntry = {
   id: string;
