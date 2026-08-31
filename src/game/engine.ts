@@ -8,6 +8,7 @@ import {
   testMinutes,
 } from "./catalog";
 import { DAY_MINUTES, DAY_PLANS } from "./cases";
+import { loadScoring } from "./scoring";
 import type {
   ActionId,
   CaseDef,
@@ -38,7 +39,6 @@ export function planForDay(day: number): string[] {
 
   if (day <= DAY_PLANS.length) {
     const planned = [...(DAY_PLANS[day - 1] ?? DAY_PLANS[0]!)];
-    // Drop ids that were deleted; fill from pool if needed
     const valid = planned.filter((id) => pool.includes(id));
     if (valid.length >= planned.length * 0.5) return valid;
   }
@@ -74,9 +74,10 @@ export function makeShift(day: number): ShiftState {
 }
 
 function gradeOf(score: number): Grade {
-  if (score >= 55) return "excellent";
-  if (score >= 32) return "good";
-  if (score >= 12) return "mixed";
+  const s = loadScoring();
+  if (score >= s.gradeExcellent) return "excellent";
+  if (score >= s.gradeGood) return "good";
+  if (score >= s.gradeMixed) return "mixed";
   return "poor";
 }
 
@@ -88,24 +89,25 @@ export function scoreConsult(
 ): Debrief {
   const lines: DebriefLine[] = [];
   let score = 0;
-  const actions = getActions();
+  const sc = loadScoring();
+  void getActions();
 
   for (const d of c.requiredDx) {
     if (dx.includes(d)) {
-      score += 16;
+      score += sc.correctDx;
       lines.push({
         kind: "ok",
-        delta: 16,
+        delta: sc.correctDx,
         text: {
           th: `วินิจฉัย ${diseaseLabel(d, "th")} ถูกต้อง`,
           en: `Correct diagnosis: ${diseaseLabel(d, "en")}`,
         },
       });
     } else {
-      score -= 14;
+      score += sc.missedDx;
       lines.push({
         kind: "miss",
-        delta: -14,
+        delta: sc.missedDx,
         text: {
           th: `พลาด ${diseaseLabel(d, "th")}`,
           en: `Missed ${diseaseLabel(d, "en")}`,
@@ -116,10 +118,10 @@ export function scoreConsult(
 
   for (const d of dx) {
     if (!c.trueDiagnoses.includes(d) && !c.requiredDx.includes(d)) {
-      score -= 8;
+      score += sc.overDx;
       lines.push({
         kind: "bad",
-        delta: -8,
+        delta: sc.overDx,
         text: {
           th: `วินิจฉัยเกิน: ${diseaseLabel(d, "th")}`,
           en: `Over-called ${diseaseLabel(d, "en")}`,
@@ -130,10 +132,10 @@ export function scoreConsult(
 
   for (const extra of c.trueDiagnoses) {
     if (!c.requiredDx.includes(extra) && dx.includes(extra)) {
-      score += 6;
+      score += sc.extraDxBonus;
       lines.push({
         kind: "bonus",
-        delta: 6,
+        delta: sc.extraDxBonus,
         text: {
           th: `จับ ${diseaseLabel(extra, "th")} ได้ด้วย`,
           en: `Also caught ${diseaseLabel(extra, "en")}`,
@@ -145,24 +147,24 @@ export function scoreConsult(
   for (const group of c.requiredGroups) {
     const hit = group.find((a) => tx.includes(a));
     if (hit) {
-      score += 10;
+      score += sc.correctPlan;
       lines.push({
         kind: "ok",
-        delta: 10,
+        delta: sc.correctPlan,
         text: {
           th: `แผนถูก: ${actionLabel(hit, "th")}`,
           en: `Plan includes ${actionLabel(hit, "en")}`,
         },
       });
     } else {
-      score -= 10;
+      score += sc.missedPlan;
       const names = group.map((a) => ({
         th: actionLabel(a, "th"),
         en: actionLabel(a, "en"),
       }));
       lines.push({
         kind: "miss",
-        delta: -10,
+        delta: sc.missedPlan,
         text: {
           th: `ขาด ${names.map((n) => n.th).join(" / ")}`,
           en: `Missing ${names.map((n) => n.en).join(" / ")}`,
@@ -173,10 +175,10 @@ export function scoreConsult(
 
   for (const a of c.bonusTreatments) {
     if (tx.includes(a)) {
-      score += 5;
+      score += sc.bonusTx;
       lines.push({
         kind: "bonus",
-        delta: 5,
+        delta: sc.bonusTx,
         text: {
           th: `โบนัส: ${actionLabel(a, "th")}`,
           en: `Bonus: ${actionLabel(a, "en")}`,
@@ -194,20 +196,20 @@ export function scoreConsult(
 
   for (const a of tx) {
     if (c.harmfulTreatments.includes(a)) {
-      score -= 18;
+      score += sc.harmfulTx;
       lines.push({
         kind: "bad",
-        delta: -18,
+        delta: sc.harmfulTx,
         text: {
           th: `อันตราย: ${actionLabel(a, "th")}`,
           en: `Harmful: ${actionLabel(a, "en")}`,
         },
       });
     } else if (!known.has(a)) {
-      score -= 3;
+      score += sc.unnecessaryTx;
       lines.push({
         kind: "bad",
-        delta: -3,
+        delta: sc.unnecessaryTx,
         text: {
           th: `ไม่จำเป็น: ${actionLabel(a, "th")}`,
           en: `Unnecessary: ${actionLabel(a, "en")}`,
@@ -218,10 +220,10 @@ export function scoreConsult(
 
   for (const t of c.usefulTests) {
     if (tests.includes(t)) {
-      score += 4;
+      score += sc.usefulLab;
       lines.push({
         kind: "ok",
-        delta: 4,
+        delta: sc.usefulLab,
         text: {
           th: `แล็บคุ้ม: ${testLabel(t, "th")}`,
           en: `Useful test: ${testLabel(t, "en")}`,
@@ -231,20 +233,20 @@ export function scoreConsult(
   }
   for (const t of tests) {
     if (!c.usefulTests.includes(t) && !(t in c.testResults)) {
-      score -= 3;
+      score += sc.lowYieldLab;
       lines.push({
         kind: "bad",
-        delta: -3,
+        delta: sc.lowYieldLab,
         text: {
           th: `แล็บเกิน: ${testLabel(t, "th")}`,
           en: `Low-yield test: ${testLabel(t, "en")}`,
         },
       });
     } else if (!c.usefulTests.includes(t) && t in c.testResults) {
-      score -= 2;
+      score += sc.unneededLab;
       lines.push({
         kind: "bad",
-        delta: -2,
+        delta: sc.unneededLab,
         text: {
           th: `แล็บไม่จำเป็น: ${testLabel(t, "th")}`,
           en: `Unneeded test: ${testLabel(t, "en")}`,
@@ -253,19 +255,16 @@ export function scoreConsult(
     }
   }
 
-  // silence unused if no custom actions labeled
-  void actions;
-
   const perfect =
     c.requiredDx.every((d) => dx.includes(d)) &&
     c.requiredGroups.every((g) => g.some((a) => tx.includes(a))) &&
     !tx.some((a) => c.harmfulTreatments.includes(a));
 
   if (perfect) {
-    score += 8;
+    score += sc.perfectBonus;
     lines.push({
       kind: "bonus",
-      delta: 8,
+      delta: sc.perfectBonus,
       text: { th: "เคสสมบูรณ์", en: "Clean case bonus" },
     });
   }
@@ -282,9 +281,16 @@ export function scoreConsult(
 }
 
 export function reputationDelta(grade: Grade, missed: number): number {
+  const s = loadScoring();
   const base =
-    grade === "excellent" ? 5 : grade === "good" ? 2 : grade === "mixed" ? 0 : -6;
-  return base - missed * 8;
+    grade === "excellent"
+      ? s.repExcellent
+      : grade === "good"
+        ? s.repGood
+        : grade === "mixed"
+          ? s.repMixed
+          : s.repPoor;
+  return base - missed * s.repMissedPerPatient;
 }
 
 export function testCost(id: TestId): number {

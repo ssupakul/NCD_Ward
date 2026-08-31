@@ -15,6 +15,7 @@ import {
   type PlayerProfile,
   type SaveData,
 } from "./save";
+import { loadScoring } from "./scoring";
 import type { ActionId, DiseaseId, Lang, Screen, ShiftState, TestId } from "./types";
 
 const REAL_TO_CLINIC = 0.07; // ~14s per clinic minute
@@ -497,16 +498,27 @@ export const useGame = create<GameState>((set, get) => ({
     const unseen = shift.patients.map((p) =>
       p.seen ? p : { ...p, missed: true },
     );
+    const sc = loadScoring();
     let rep = 0;
     const seen = unseen.filter((p) => p.debrief);
-    if (seen.length === 0) rep = -8 * Math.max(1, missed);
+    if (seen.length === 0)
+      rep = -Math.max(8, sc.repMissedPerPatient * 2) * Math.max(1, missed);
     else {
       const avg =
         seen.reduce((a, p) => {
           const g = p.debrief!.grade;
-          return a + (g === "excellent" ? 5 : g === "good" ? 2 : g === "mixed" ? 0 : -6);
+          return (
+            a +
+            (g === "excellent"
+              ? sc.repExcellent
+              : g === "good"
+                ? sc.repGood
+                : g === "mixed"
+                  ? sc.repMixed
+                  : sc.repPoor)
+          );
         }, 0) / seen.length;
-      rep = Math.round(avg - missed * 4);
+      rep = Math.round(avg - missed * sc.repMissedPerPatient);
     }
     const reputation = clampRep(get().reputation + rep);
     const careerScore = get().careerScore + shift.score;

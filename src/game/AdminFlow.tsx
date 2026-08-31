@@ -16,6 +16,13 @@ import {
   tryAdminLogin,
 } from "./admin";
 import {
+  loadScoring,
+  resetScoring,
+  saveScoring,
+  SCORING_FIELDS,
+  type ScoringField,
+} from "./scoring";
+import {
   blankCase,
   deleteAction,
   deleteCase,
@@ -46,7 +53,13 @@ import { useGame } from "./store";
 import type { ActionGroup, CaseDef, Loc } from "./types";
 import { useT } from "./ui";
 
-type AdminTab = "cases" | "diseases" | "labs" | "actions" | "password";
+type AdminTab =
+  | "cases"
+  | "diseases"
+  | "labs"
+  | "actions"
+  | "scoring"
+  | "password";
 
 function LocInputs({
   label,
@@ -203,6 +216,7 @@ export function AdminScreen() {
     { id: "diseases", th: "โรค", en: "Diseases" },
     { id: "labs", th: "แล็บ", en: "Labs" },
     { id: "actions", th: "ยา/แผน", en: "Treatments" },
+    { id: "scoring", th: "คะแนน", en: "Scoring" },
     { id: "password", th: "รหัสผ่าน", en: "Password" },
   ];
 
@@ -255,6 +269,7 @@ export function AdminScreen() {
           {tab === "diseases" ? <DiseasesAdmin onChange={refresh} /> : null}
           {tab === "labs" ? <LabsAdmin onChange={refresh} /> : null}
           {tab === "actions" ? <ActionsAdmin onChange={refresh} /> : null}
+          {tab === "scoring" ? <ScoringAdmin /> : null}
           {tab === "password" ? <PasswordAdmin /> : null}
         </div>
       </div>
@@ -897,6 +912,111 @@ function ActionsAdmin({ onChange }: { onChange: () => void }) {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+function ScoringAdmin() {
+  const t = useT();
+  const [cfg, setCfg] = useState(() => loadScoring());
+  const [saved, setSaved] = useState(false);
+
+  const groups: { id: ScoringField["group"]; th: string; en: string }[] = [
+    { id: "dx", th: "วินิจฉัย", en: "Diagnosis" },
+    { id: "plan", th: "แผนรักษา", en: "Treatment plan" },
+    { id: "lab", th: "แล็บ", en: "Labs" },
+    { id: "perfect", th: "โบนัสเคส", en: "Case bonus" },
+    { id: "grade", th: "เกณฑ์เกรด", en: "Grade thresholds" },
+    { id: "rep", th: "ชื่อเสียง (หลังเวร)", en: "Reputation (end of shift)" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-muted">
+        {t(
+          "ปรับคะแนนที่ระบบให้ในเดอบรีฟและเกณฑ์เกรด — ค่าติดลบหมายถึงหักคะแนน บันทึกแล้วมีผลทันทีกับเคสถัดไป",
+          "Tune debrief points and grade cutoffs. Negative values subtract score. Saves apply to the next consult.",
+        )}
+      </p>
+
+      {groups.map((g) => (
+        <section key={g.id} className="space-y-2">
+          <h3 className="text-lg font-medium">{t(g.th, g.en)}</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {SCORING_FIELDS.filter((f) => f.group === g.id).map((f) => (
+              <label
+                key={f.key}
+                className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3 py-2 shadow-[var(--shadow-border)]"
+              >
+                <span className="min-w-0 flex-1 text-sm">
+                  {t(f.th, f.en)}
+                  <span className="mt-0.5 block text-[10px] text-muted">
+                    {f.key}
+                  </span>
+                </span>
+                <input
+                  type="number"
+                  className="w-20 rounded-lg border border-foreground/15 bg-background px-2 py-1.5 text-right tabular text-sm"
+                  value={cfg[f.key]}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    setCfg({
+                      ...cfg,
+                      [f.key]: Number.isFinite(n) ? n : 0,
+                    });
+                    setSaved(false);
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          onClick={() => {
+            // Ensure grade order makes sense
+            const next = { ...cfg };
+            const grades = [
+              next.gradeExcellent,
+              next.gradeGood,
+              next.gradeMixed,
+            ].sort((a, b) => b - a);
+            next.gradeExcellent = grades[0]!;
+            next.gradeGood = grades[1]!;
+            next.gradeMixed = grades[2]!;
+            saveScoring(next);
+            setCfg(next);
+            setSaved(true);
+          }}
+        >
+          {t("บันทึกคะแนน", "Save scoring")}
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            if (
+              window.confirm(
+                t(
+                  "คืนค่าเริ่มต้นของระบบคะแนน?",
+                  "Reset scoring to defaults?",
+                ),
+              )
+            ) {
+              setCfg(resetScoring());
+              setSaved(true);
+            }
+          }}
+        >
+          {t("คืนค่าเริ่มต้น", "Reset defaults")}
+        </Button>
+      </div>
+      {saved ? (
+        <p className="text-sm text-ok">
+          {t("บันทึกแล้ว — มีผลกับเคสถัดไป", "Saved — applies to the next case")}
+        </p>
+      ) : null}
     </div>
   );
 }
