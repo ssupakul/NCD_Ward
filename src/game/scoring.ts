@@ -1,12 +1,14 @@
 /**
  * Admin-configurable scoring rules (localStorage).
- * Used by engine.scoreConsult / grade thresholds / reputation.
+ * Grade thresholds can auto-scale from point weights.
  */
 
 const SCORING_KEY = "ward-ncd-scoring-v1";
 
 export type ScoringConfig = {
   version: number;
+  /** When true, gradeExcellent/Good/Mixed are derived from point weights */
+  autoGrade: boolean;
   /** Diagnosis */
   correctDx: number;
   missedDx: number;
@@ -24,11 +26,11 @@ export type ScoringConfig = {
   unneededLab: number;
   /** Case bonus */
   perfectBonus: number;
-  /** Grade thresholds (score >= threshold) */
+  /** Grade thresholds (score >= threshold) — may be auto-filled */
   gradeExcellent: number;
   gradeGood: number;
   gradeMixed: number;
-  /** Reputation after shift (per grade average inputs used in closeClinic) */
+  /** Reputation after shift */
   repExcellent: number;
   repGood: number;
   repMixed: number;
@@ -38,6 +40,7 @@ export type ScoringConfig = {
 
 export const DEFAULT_SCORING: ScoringConfig = {
   version: 1,
+  autoGrade: true,
   correctDx: 16,
   missedDx: -14,
   overDx: -8,
@@ -61,43 +64,99 @@ export const DEFAULT_SCORING: ScoringConfig = {
   repMissedPerPatient: 4,
 };
 
+/**
+ * Reference "solid clean case" score used to scale grade bands:
+ * 1 correct Dx + 2 plan groups + 1 useful lab + perfect bonus
+ * Ratios match the original defaults (≈55 / 32 / 12 when using default points).
+ */
+export function computeGradeThresholds(
+  cfg: Pick<
+    ScoringConfig,
+    "correctDx" | "correctPlan" | "usefulLab" | "perfectBonus"
+  >,
+): Pick<ScoringConfig, "gradeExcellent" | "gradeGood" | "gradeMixed"> {
+  const core =
+    Math.max(0, cfg.correctDx) +
+    Math.max(0, cfg.correctPlan) * 2 +
+    Math.max(0, cfg.usefulLab) +
+    Math.max(0, cfg.perfectBonus);
+
+  // Fallback if all zeros
+  const base = core > 0 ? core : 48;
+
+  let excellent = Math.round(base * (55 / 48));
+  let good = Math.round(base * (32 / 48));
+  let mixed = Math.round(base * (12 / 48));
+
+  // Keep strict ordering: excellent > good > mixed >= 0
+  if (mixed < 0) mixed = 0;
+  if (good <= mixed) good = mixed + 1;
+  if (excellent <= good) excellent = good + 1;
+
+  return {
+    gradeExcellent: excellent,
+    gradeGood: good,
+    gradeMixed: mixed,
+  };
+}
+
+export function withAutoGrades(cfg: ScoringConfig): ScoringConfig {
+  if (!cfg.autoGrade) {
+    // Still enforce order if manual
+    const grades = [cfg.gradeExcellent, cfg.gradeGood, cfg.gradeMixed].sort(
+      (a, b) => b - a,
+    );
+    return {
+      ...cfg,
+      gradeExcellent: grades[0]!,
+      gradeGood: grades[1]!,
+      gradeMixed: Math.max(0, grades[2]!),
+    };
+  }
+  return { ...cfg, ...computeGradeThresholds(cfg) };
+}
+
 function canStore(): boolean {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
 }
 
 export function loadScoring(): ScoringConfig {
-  if (!canStore()) return { ...DEFAULT_SCORING };
+  if (!canStore()) return withAutoGrades({ ...DEFAULT_SCORING });
   try {
     const raw = localStorage.getItem(SCORING_KEY);
-    if (!raw) return { ...DEFAULT_SCORING };
+    if (!raw) return withAutoGrades({ ...DEFAULT_SCORING });
     const parsed = JSON.parse(raw) as Partial<ScoringConfig>;
-    return { ...DEFAULT_SCORING, ...parsed, version: 1 };
+    const merged: ScoringConfig = {
+      ...DEFAULT_SCORING,
+      ...parsed,
+      version: 1,
+      autoGrade: parsed.autoGrade !== false,
+    };
+    return withAutoGrades(merged);
   } catch {
-    return { ...DEFAULT_SCORING };
+    return withAutoGrades({ ...DEFAULT_SCORING });
   }
 }
 
 export function saveScoring(cfg: ScoringConfig): void {
   if (!canStore()) return;
+  const next = withAutoGrades({ ...cfg, version: 1 });
   try {
-    localStorage.setItem(
-      SCORING_KEY,
-      JSON.stringify({ ...cfg, version: 1 }),
-    );
+    localStorage.setItem(SCORING_KEY, JSON.stringify(next));
   } catch {
     /* ignore */
   }
 }
 
 export function resetScoring(): ScoringConfig {
-  const d = { ...DEFAULT_SCORING };
+  const d = withAutoGrades({ ...DEFAULT_SCORING });
   saveScoring(d);
   return d;
 }
 
 /** Field metadata for admin UI */
 export type ScoringField = {
-  key: keyof Omit<ScoringConfig, "version">;
+  key: keyof Omit<ScoringConfig, "version" | "autoGrade">;
   th: string;
   en: string;
   group: "dx" | "plan" | "lab" | "perfect" | "grade" | "rep";
