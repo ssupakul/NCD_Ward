@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "WARD",
+      "hasCanvas": false,
+      "bodyTextLen": 141,
+      "bodyTextHash": "922dcdbe79a94c5abce0a9cb7f52ef534e8db80f344279a612f70fcb0b313a48",
+      "bodyTextPrefix": "NCD CLINIC WARD เวรคลินิกโรคไม่ติดต่อ — เรียกคนไข้ เปิดชาร์ต สั่",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "WARD",
+      "hasCanvas": false,
+      "bodyTextLen": 141,
+      "bodyTextHash": "922dcdbe79a94c5abce0a9cb7f52ef534e8db80f344279a612f70fcb0b313a48",
+      "bodyTextPrefix": "NCD CLINIC WARD เวรคลินิกโรคไม่ติดต่อ — เรียกคนไข้ เปิดชาร์ต สั่",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

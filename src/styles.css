@@ -1,0 +1,122 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0c1210;
+  --color-foreground: #e7eeea;
+  --color-surface: #161e1b;
+  --color-surface-2: #1c2622;
+  --color-muted: #8b9892;
+  --color-subtle: #6a7671;
+  --color-accent: #7eb8a8;
+  --color-accent-foreground: #0c1210;
+  --color-paper: #f1ebe0;
+  --color-paper-foreground: #1c2421;
+  --color-paper-muted: #5c6561;
+  --color-danger: #c45c4a;
+  --color-warn: #c4a15c;
+  --color-ok: #6aab7a;
+  --color-border: rgb(231 238 234 / 0.12);
+  --color-ring: #7eb8a8;
+
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Instrument Serif", "Iowan Old Style", Palatino, Georgia, serif;
+  --font-mono: "IBM Plex Sans", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-border: 0 0 0 1px rgb(231 238 234 / 0.08);
+  --shadow-border-hover: 0 0 0 1px rgb(231 238 234 / 0.14);
+  --shadow-paper:
+    0 0 0 1px rgb(28 36 33 / 0.06),
+    0 1px 2px -1px rgb(28 36 33 / 0.08),
+    0 12px 32px -12px rgb(12 18 16 / 0.45);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    background: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes ward-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ward-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.ward-enter {
+  animation: ward-enter 250ms var(--ease-smooth-out) both;
+}
+
+.ward-enter-slow {
+  animation: ward-enter 400ms var(--ease-smooth-out) both;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
