@@ -6,7 +6,13 @@ import {
   WaitingRoom,
 } from "./ClinicFlow";
 import { ConsultScreen, DebriefScreen } from "./ConsultFlow";
-import { HandbookScreen, HowToScreen, RecordsScreen, TitleScreen } from "./TitleFlow";
+import {
+  HandbookScreen,
+  HowToScreen,
+  LeaderboardScreen,
+  RecordsScreen,
+  TitleScreen,
+} from "./TitleFlow";
 import { useGame } from "./store";
 
 export function Game() {
@@ -51,6 +57,8 @@ export function Game() {
       return <HowToScreen />;
     case "records":
       return <RecordsScreen />;
+    case "leaderboard":
+      return <LeaderboardScreen />;
     case "handbook":
       return <HandbookScreen />;
     case "briefing":

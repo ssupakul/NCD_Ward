@@ -6,6 +6,7 @@ export type Screen =
   | "title"
   | "howTo"
   | "records"
+  | "leaderboard"
   | "handbook"
   | "briefing"
   | "waiting"
