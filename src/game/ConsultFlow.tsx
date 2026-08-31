@@ -9,7 +9,7 @@ import {
   getTests,
 } from "./catalog";
 import { loc } from "./content";
-import { getCase } from "./engine";
+import { diagnosisOptionsForCase, getCase } from "./engine";
 import { useGame } from "./store";
 import type { ActionGroup, ActionId, DiseaseId, Grade, TestId } from "./types";
 import { Chip, Paper, Portrait, useT } from "./ui";
@@ -25,10 +25,16 @@ export function ConsultScreen() {
   const toggleTx = useGame((s) => s.toggleTx);
   const signOff = useGame((s) => s.signOff);
   const openOverlay = useGame((s) => s.openOverlay);
+  const difficulty = useGame((s) => s.difficulty);
   const p = shift?.patients.find((x) => x.instanceId === shift.activeId);
   if (!shift || !p) return null;
   const c = getCase(p.caseId);
   const tab = shift.tab;
+  const dxOptions = diagnosisOptionsForCase(
+    c,
+    difficulty,
+    getDiseaseOrder(),
+  );
 
   return (
     <div className="min-h-dvh bg-background">
@@ -159,7 +165,7 @@ export function ConsultScreen() {
                     {t("วินิจฉัย", "Diagnoses")}
                   </h3>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {getDiseaseOrder().map((id) => {
+                    {dxOptions.map((id) => {
                       const d = getDiseases()[id];
                       if (!d) return null;
                       return (

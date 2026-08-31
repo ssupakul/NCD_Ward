@@ -284,6 +284,8 @@ export function TitleScreen() {
             <span className="font-medium text-foreground">{playerName}</span>
           </div>
 
+          <DifficultyPicker />
+
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             {hasSave && reputation > 0 ? (
               <Button size="lg" onClick={continueCareer} className="min-h-12">
@@ -417,8 +419,16 @@ export function RecordsScreen() {
   const patientsTreated = useGame((s) => s.patientsTreated);
   const perfectCases = useGame((s) => s.perfectCases);
   const bestShiftScore = useGame((s) => s.bestShiftScore);
+  const difficulty = useGame((s) => s.difficulty);
+  const diffLabel =
+    difficulty === 1
+      ? t("ง่าย", "Easy")
+      : difficulty === 2
+        ? t("ปานกลาง", "Medium")
+        : t("ยาก", "Hard");
   const rows = [
     { th: "แพทย์", en: "Doctor", v: playerName ?? "—" },
+    { th: "ระดับความยาก", en: "Difficulty", v: diffLabel },
     { th: "วันที่อาชีพ", en: "Career day", v: String(day) },
     { th: "ชื่อเสียง", en: "Reputation", v: String(reputation) },
     { th: "คะแนนรวม", en: "Career score", v: String(careerScore) },
@@ -569,6 +579,36 @@ export function LeaderboardScreen() {
         </ol>
       )}
     </InfoShell>
+  );
+}
+
+function DifficultyPicker() {
+  const t = useT();
+  const difficulty = useGame((s) => s.difficulty);
+  const setDifficulty = useGame((s) => s.setDifficulty);
+  const options = [
+    { d: 1 as const, th: "ง่าย", en: "Easy" },
+    { d: 2 as const, th: "ปานกลาง", en: "Medium" },
+    { d: 3 as const, th: "ยาก", en: "Hard" },
+  ];
+  return (
+    <div className="mt-4">
+      <p className="mb-2 text-sm text-muted">
+        {t("ระดับความยาก", "Difficulty")}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((x) => (
+          <Button
+            key={x.d}
+            size="sm"
+            variant={difficulty === x.d ? "primary" : "secondary"}
+            onClick={() => setDifficulty(x.d)}
+          >
+            {t(x.th, x.en)}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
 

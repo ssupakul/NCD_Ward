@@ -66,9 +66,17 @@ export function BriefingScreen() {
   const t = useT();
   const day = useGame((s) => s.day);
   const reputation = useGame((s) => s.reputation);
+  const difficulty = useGame((s) => s.difficulty);
+  const setDifficulty = useGame((s) => s.setDifficulty);
   const startShift = useGame((s) => s.startShift);
   const toTitle = useGame((s) => s.toTitle);
   const n = day <= 8 ? [3, 4, 4, 5, 5, 6, 6, 6][day - 1] : 6;
+  const diffLabel =
+    difficulty === 1
+      ? t("ง่าย", "Easy")
+      : difficulty === 2
+        ? t("ปานกลาง", "Medium")
+        : t("ยาก", "Hard");
   return (
     <div className="min-h-dvh bg-background">
       <Hud />
@@ -79,10 +87,51 @@ export function BriefingScreen() {
         <h1 className="mt-2 text-5xl">{t(`วันที่ ${day}`, `Day ${day}`)}</h1>
         <p className="mt-4 text-muted">
           {t(
-            `${n} คนไข้ · ${minutesForDay(day)} นาทีคลินิก · ชื่อเสียง ${reputation}`,
-            `${n} patients · ${minutesForDay(day)} clinic minutes · reputation ${reputation}`,
+            `${n} คนไข้ · ${minutesForDay(day)} นาทีคลินิก · ชื่อเสียง ${reputation} · ${diffLabel}`,
+            `${n} patients · ${minutesForDay(day)} clinic minutes · reputation ${reputation} · ${diffLabel}`,
           )}
         </p>
+
+        <div className="mt-6">
+          <p className="mb-2 text-sm text-muted">
+            {t("ระดับความยาก (เคส + ตัวเลือกวินิจฉัย)", "Difficulty (cases + diagnosis options)")}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { d: 1 as const, th: "ง่าย", en: "Easy" },
+                { d: 2 as const, th: "ปานกลาง", en: "Medium" },
+                { d: 3 as const, th: "ยาก", en: "Hard" },
+              ] as const
+            ).map((x) => (
+              <Button
+                key={x.d}
+                size="sm"
+                variant={difficulty === x.d ? "primary" : "secondary"}
+                onClick={() => setDifficulty(x.d)}
+              >
+                {t(x.th, x.en)}
+              </Button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            {difficulty === 1
+              ? t(
+                  "เคสง่าย · ตัวเลือกวินิจฉัยน้อย",
+                  "Easier cases · fewer diagnosis choices",
+                )
+              : difficulty === 2
+                ? t(
+                    "เคสปานกลาง · ตัวเลือกวินิจฉัยปานกลาง",
+                    "Mixed cases · moderate diagnosis choices",
+                  )
+                : t(
+                    "เคสยากครบ · ตัวเลือกวินิจฉัยทั้งหมด",
+                    "Hardest cases · full diagnosis list",
+                  )}
+          </p>
+        </div>
+
         <ul className="mt-8 space-y-3 text-foreground">
           <li>{t("เรียกคนไข้ตามความเร่งด่วน", "Call patients by urgency.")}</li>
           <li>{t("แล็บกินเวลา — สั่งเท่าที่เปลี่ยนแผน", "Labs cost time. Order only what changes the plan.")}</li>

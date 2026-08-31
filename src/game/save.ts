@@ -1,6 +1,6 @@
-import type { Lang } from "./types";
+import type { Difficulty, Lang } from "./types";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 const PROFILES_KEY = "ward-ncd-profiles-v1";
 const CURRENT_KEY = "ward-ncd-current-v1";
 const LEGACY_KEY = "ward-ncd-v1";
@@ -8,6 +8,8 @@ const LEGACY_KEY = "ward-ncd-v1";
 export type SaveData = {
   version: number;
   lang: Lang;
+  /** Preferred case/diagnosis difficulty: 1 easy · 2 medium · 3 hard */
+  difficulty: Difficulty;
   day: number;
   reputation: number;
   careerScore: number;
@@ -32,6 +34,7 @@ export type ProfilesIndex = {
 const defaults: SaveData = {
   version: SAVE_VERSION,
   lang: "th",
+  difficulty: 2,
   day: 1,
   reputation: 58,
   careerScore: 0,
@@ -56,8 +59,19 @@ function newId(): string {
   return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function normalizeDifficulty(v: unknown): Difficulty {
+  const n = Number(v);
+  if (n === 1 || n === 2 || n === 3) return n;
+  return 2;
+}
+
 function migrate(raw: SaveData): SaveData {
-  return { ...defaults, ...raw, version: SAVE_VERSION };
+  return {
+    ...defaults,
+    ...raw,
+    difficulty: normalizeDifficulty(raw?.difficulty),
+    version: SAVE_VERSION,
+  };
 }
 
 function playerKey(id: string) {

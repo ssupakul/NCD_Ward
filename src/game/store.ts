@@ -36,6 +36,7 @@ type GameState = SaveData & {
   players: PlayerProfile[];
   hydrate: () => void;
   setLang: (lang: Lang) => void;
+  setDifficulty: (d: import("./types").Difficulty) => void;
   persist: () => void;
   registerPlayer: (name: string) => void;
   selectPlayer: (id: string) => void;
@@ -94,8 +95,9 @@ function applySave(saved: SaveData | null) {
 }
 
 export const useGame = create<GameState>((set, get) => ({
-  version: 1,
+  version: 2,
   lang: "th",
+  difficulty: 2,
   day: 1,
   reputation: 58,
   careerScore: 0,
@@ -161,8 +163,9 @@ export const useGame = create<GameState>((set, get) => ({
     const s = get();
     if (!s.playerId) return;
     writePlayerSave(s.playerId, {
-      version: 1,
+      version: 2,
       lang: s.lang,
+      difficulty: s.difficulty,
       day: s.day,
       reputation: s.reputation,
       careerScore: s.careerScore,
@@ -176,6 +179,13 @@ export const useGame = create<GameState>((set, get) => ({
 
   setLang: (lang) => {
     set({ lang });
+    get().persist();
+  },
+
+  setDifficulty: (d) => {
+    unlockAudio();
+    sfxClick();
+    set({ difficulty: d });
     get().persist();
   },
 
@@ -342,7 +352,11 @@ export const useGame = create<GameState>((set, get) => ({
   startShift: () => {
     unlockAudio();
     sfxClick();
-    set({ shift: makeShift(get().day), screen: "waiting", overlay: null });
+    set({
+      shift: makeShift(get().day, get().difficulty),
+      screen: "waiting",
+      overlay: null,
+    });
   },
 
   openPatient: (id) => {

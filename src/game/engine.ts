@@ -14,6 +14,7 @@ import type {
   CaseDef,
   Debrief,
   DebriefLine,
+  Difficulty,
   DiseaseId,
   Grade,
   ShiftPatient,
@@ -32,26 +33,60 @@ export function minutesForDay(day: number): number {
   return 50;
 }
 
-export function planForDay(day: number): string[] {
+/** Cases allowed at this player difficulty (easy = only 1, hard = 1–3). */
+export function casesForDifficulty(level: Difficulty): CaseDef[] {
   const all = listCases();
-  const pool = all.map((c) => c.id);
+  const matched = all.filter((c) => c.difficulty <= level);
+  if (matched.length > 0) return matched;
+  return all;
+}
+
+export function planForDay(day: number, difficulty: Difficulty = 2): string[] {
+  const poolCases = casesForDifficulty(difficulty);
+  const pool = poolCases.map((c) => c.id);
   if (pool.length === 0) return [];
+
+  const nTarget =
+    day <= 8 ? [3, 4, 4, 5, 5, 6, 6, 6][day - 1]! : 5 + (day % 2);
 
   if (day <= DAY_PLANS.length) {
     const planned = [...(DAY_PLANS[day - 1] ?? DAY_PLANS[0]!)];
     const valid = planned.filter((id) => pool.includes(id));
-    if (valid.length >= planned.length * 0.5) return valid;
+    if (valid.length >= Math.min(nTarget, planned.length) * 0.5) {
+      // Prefer cases at the selected difficulty when filling
+      const preferred = poolCases
+        .filter((c) => c.difficulty === difficulty)
+        .map((c) => c.id);
+      const out = [...valid];
+      let i = 0;
+      while (out.length < nTarget && preferred.length > 0) {
+        const id = preferred[i % preferred.length]!;
+        if (!out.includes(id) || out.length < preferred.length) out.push(id);
+        i++;
+        if (i > nTarget * 3) break;
+      }
+      while (out.length < nTarget && pool.length > 0) {
+        out.push(pool[out.length % pool.length]!);
+      }
+      return out.slice(0, nTarget);
+    }
   }
 
-  const n = Math.min(pool.length, 5 + (day % 2));
-  const start = (day * 3) % pool.length;
+  // Prefer exact difficulty, then fill from lower
+  const preferred = poolCases
+    .filter((c) => c.difficulty === difficulty)
+    .map((c) => c.id);
+  const rest = pool.filter((id) => !preferred.includes(id));
+  const ordered = preferred.length > 0 ? [...preferred, ...rest] : pool;
+  const n = Math.min(ordered.length, nTarget);
+  const start = (day * 3) % ordered.length;
   const out: string[] = [];
-  for (let i = 0; i < n; i++) out.push(pool[(start + i) % pool.length]!);
+  for (let i = 0; i < n; i++) out.push(ordered[(start + i) % ordered.length]!);
   return out;
 }
 
-export function makeShift(day: number): ShiftState {
-  const ids = planForDay(day);
+export function makeShift(day: number, difficulty: Difficulty = 2): ShiftState {
+  const ids = planForDay(day, difficulty);
   const patients: ShiftPatient[] = ids.map((caseId, i) => ({
     instanceId: `${day}-${i}-${caseId}`,
     caseId,
@@ -71,6 +106,36 @@ export function makeShift(day: number): ShiftState {
     activeId: null,
     tab: "chart",
   };
+}
+
+/**
+ * Diagnosis options shown on the plan tab.
+ * Easy: true + required + a few distractors.
+ * Medium: broader set.
+ * Hard: full catalog.
+ */
+export function diagnosisOptionsForCase(
+  c: CaseDef,
+  difficulty: Difficulty,
+  allDiseaseIds: string[],
+): string[] {
+  if (difficulty >= 3) return allDiseaseIds;
+
+  const core = new Set<string>([...c.trueDiagnoses, ...c.requiredDx]);
+  const distractorBudget = difficulty === 1 ? 3 : 6;
+  const distractors = allDiseaseIds.filter((id) => !core.has(id));
+  // Stable subset from case id hash
+  let h = 0;
+  for (let i = 0; i < c.id.length; i++) h = (h * 31 + c.id.charCodeAt(i)) >>> 0;
+  const picked: string[] = [];
+  for (let i = 0; i < distractors.length && picked.length < distractorBudget; i++) {
+    const idx = (h + i * 7) % distractors.length;
+    const id = distractors[idx]!;
+    if (!picked.includes(id)) picked.push(id);
+  }
+  const set = new Set([...core, ...picked]);
+  // Preserve catalog order
+  return allDiseaseIds.filter((id) => set.has(id));
 }
 
 function gradeOf(score: number): Grade {

@@ -1,5 +1,8 @@
 export type Lang = "th" | "en";
 
+/** 1 = easy, 2 = medium, 3 = hard */
+export type Difficulty = 1 | 2 | 3;
+
 export type Loc = { th: string; en: string };
 
 export type Screen =
