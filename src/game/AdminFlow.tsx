@@ -16,12 +16,19 @@ import {
   tryAdminLogin,
 } from "./admin";
 import {
+  createPlayerBackup,
   deletePlayer,
+  deletePlayerBackup,
+  downloadPlayerBackup,
   getLeaderboard,
+  importPlayerBackup,
+  listPlayerBackups,
   loadProfilesIndex,
   resetAllPlayerStats,
   resetPlayerStats,
+  restorePlayerBackup,
   wipeAllPlayers,
+  type PlayerBackup,
 } from "./save";
 import {
   computeGradeThresholds,
@@ -1128,26 +1135,184 @@ function ScoringAdmin() {
   );
 }
 
+function formatBackupTime(ts: number): string {
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return String(ts);
+  }
+}
+
 function PlayersAdmin({ onChange }: { onChange: () => void }) {
   const t = useT();
   const hydrate = useGame((s) => s.hydrate);
   const [msg, setMsg] = useState<string | null>(null);
+  const [backups, setBackups] = useState<PlayerBackup[]>(() =>
+    listPlayerBackups(),
+  );
   const players = loadProfilesIndex().players;
   const board = getLeaderboard("careerScore");
+
+  const refreshBackups = () => setBackups(listPlayerBackups());
 
   const afterReset = () => {
     hydrate();
     onChange();
+    refreshBackups();
   };
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted">
         {t(
-          "รีเซ็ตคะแนน / อันดับ / ลบผู้เล่นบนเครื่องนี้ — ไม่กระทบเคส ยา แล็บ หรือรหัสแอดมิน",
-          "Reset scores, rankings, or delete players on this device — does not affect cases, meds, labs, or admin password.",
+          "รีเซ็ตคะแนน / อันดับ / ลบผู้เล่น — ระบบสำรองข้อมูลอัตโนมัติก่อนรีเซ็ต และดาวน์โหลด/กู้คืนได้",
+          "Reset scores, rankings, or delete players — auto-backup before reset; download and restore supported.",
         )}
       </p>
+
+      {/* Backup actions */}
+      <section className="space-y-3 rounded-lg bg-surface-2 p-4 shadow-[var(--shadow-border)]">
+        <h3 className="font-medium">
+          {t("สำรองข้อมูลผู้เล่น", "Player data backup")}
+        </h3>
+        <p className="text-xs text-muted">
+          {t(
+            "เก็บชื่อ ผู้เล่น สถิติ และอันดับ — สูงสุด 10 ชุดล่าสุดบนเครื่องนี้",
+            "Stores names, stats, and rankings — up to 10 recent snapshots on this device.",
+          )}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={() => {
+              const b = createPlayerBackup("manual");
+              downloadPlayerBackup(b);
+              refreshBackups();
+              setMsg(
+                t(
+                  `สำรองแล้ว (${b.players.length} คน) และดาวน์โหลดไฟล์`,
+                  `Backed up (${b.players.length} players) and downloaded file`,
+                ),
+              );
+            }}
+          >
+            {t("สำรอง + ดาวน์โหลด", "Backup + download")}
+          </Button>
+          <label className="inline-flex cursor-pointer">
+            <span className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-background px-3 text-sm shadow-[var(--shadow-border)] hover:opacity-90">
+              {t("นำเข้าไฟล์สำรอง", "Import backup file")}
+            </span>
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const data = JSON.parse(text) as unknown;
+                  const b = importPlayerBackup(data);
+                  if (!b) {
+                    setMsg(
+                      t(
+                        "ไฟล์สำรองไม่ถูกต้อง",
+                        "Invalid backup file",
+                      ),
+                    );
+                    return;
+                  }
+                  refreshBackups();
+                  setMsg(
+                    t(
+                      `นำเข้าสำรองแล้ว (${b.players.length} คน) — กดกู้คืนถ้าต้องการใช้`,
+                      `Imported backup (${b.players.length} players) — restore when ready`,
+                    ),
+                  );
+                } catch {
+                  setMsg(
+                    t("อ่านไฟล์ไม่สำเร็จ", "Failed to read file"),
+                  );
+                }
+              }}
+            />
+          </label>
+        </div>
+
+        {backups.length === 0 ? (
+          <p className="text-sm text-muted">
+            {t("ยังไม่มีสำรอง", "No backups yet")}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {backups.map((b) => (
+              <li
+                key={b.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-background/60 px-3 py-2"
+              >
+                <div className="min-w-0 flex-1 text-sm">
+                  <div className="font-medium">
+                    {formatBackupTime(b.createdAt)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    {b.label} · {b.players.length}{" "}
+                    {t("คน", "players")}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => downloadPlayerBackup(b)}
+                >
+                  {t("ดาวน์โหลด", "Download")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        t(
+                          "กู้คืนสำรองนี้? ข้อมูลผู้เล่นปัจจุบันจะถูกแทนที่ (มีการสำรองก่อนกู้คืนอัตโนมัติ)",
+                          "Restore this backup? Current player data will be replaced (auto-backup before restore).",
+                        ),
+                      )
+                    )
+                      return;
+                    if (restorePlayerBackup(b.id)) {
+                      afterReset();
+                      setMsg(
+                        t(
+                          "กู้คืนสำรองแล้ว",
+                          "Backup restored",
+                        ),
+                      );
+                    } else {
+                      setMsg(
+                        t("กู้คืนไม่สำเร็จ", "Restore failed"),
+                      );
+                    }
+                  }}
+                >
+                  {t("กู้คืน", "Restore")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-danger"
+                  onClick={() => {
+                    deletePlayerBackup(b.id);
+                    refreshBackups();
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -1156,8 +1321,8 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
             if (
               !window.confirm(
                 t(
-                  "รีเซ็ตสถิติผู้เล่นทุกคนเป็นค่าเริ่มต้น? (ชื่อยังอยู่ อันดับคะแนนเป็นศูนย์)",
-                  "Reset all player stats to defaults? (Names stay; scores/ranks clear)",
+                  "จะสำรองข้อมูลอัตโนมัติก่อน แล้วรีเซ็ตสถิติทุกคน (ชื่อยังอยู่)?",
+                  "Auto-backup first, then reset all player stats (names kept)?",
                 ),
               )
             )
@@ -1166,8 +1331,8 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
             afterReset();
             setMsg(
               t(
-                `รีเซ็ตสถิติ ${n} คนแล้ว`,
-                `Reset stats for ${n} player(s)`,
+                `สำรองแล้ว และรีเซ็ตสถิติ ${n} คน`,
+                `Backed up and reset stats for ${n} player(s)`,
               ),
             );
           }}
@@ -1180,8 +1345,8 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
             if (
               !window.confirm(
                 t(
-                  "ลบผู้เล่นทั้งหมดและอันดับบนเครื่องนี้? ต้องลงทะเบียนใหม่",
-                  "Delete ALL players and rankings on this device? Everyone must register again.",
+                  "จะสำรองข้อมูลอัตโนมัติก่อน แล้วลบผู้เล่นทั้งหมด?",
+                  "Auto-backup first, then delete ALL players?",
                 ),
               )
             )
@@ -1189,8 +1354,8 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
             if (
               !window.confirm(
                 t(
-                  "ยืนยันอีกครั้ง — การกระทำนี้ย้อนกลับไม่ได้",
-                  "Confirm again — this cannot be undone",
+                  "ยืนยันอีกครั้ง — ลบผู้เล่นปัจจุบัน (กู้คืนจากสำรองได้)",
+                  "Confirm again — current players will be removed (restorable from backup)",
                 ),
               )
             )
@@ -1199,8 +1364,8 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
             afterReset();
             setMsg(
               t(
-                `ลบผู้เล่น ${n} คนแล้ว — เริ่มต้นใหม่ได้`,
-                `Wiped ${n} player(s) — ready for a fresh start`,
+                `สำรองแล้ว และลบผู้เล่น ${n} คน`,
+                `Backed up and wiped ${n} player(s)`,
               ),
             );
           }}

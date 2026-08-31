@@ -280,8 +280,10 @@ export function resetPlayerStats(playerId: string, lang: Lang = "th"): void {
 /**
  * Reset career stats for every registered player (names kept).
  * Leaderboard scores go back to zero / defaults.
+ * Auto-creates a backup snapshot first.
  */
-export function resetAllPlayerStats(): number {
+export function resetAllPlayerStats(opts?: { skipBackup?: boolean }): number {
+  if (!opts?.skipBackup) createPlayerBackup("before-reset-stats");
   const index = loadProfilesIndex();
   for (const p of index.players) {
     resetPlayerStats(p.id);
@@ -292,15 +294,16 @@ export function resetAllPlayerStats(): number {
 /**
  * Delete every player profile + save + current session.
  * Full wipe of multiplayer data and leaderboard on this device.
+ * Auto-creates a backup snapshot first.
  */
-export function wipeAllPlayers(): number {
+export function wipeAllPlayers(opts?: { skipBackup?: boolean }): number {
   if (!canUseStorage()) return 0;
+  if (!opts?.skipBackup) createPlayerBackup("before-wipe");
   const index = loadProfilesIndex();
   const n = index.players.length;
   for (const p of index.players) {
     clearPlayerSave(p.id);
   }
-  // Also clear any orphan keys matching player save pattern
   try {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -321,6 +324,150 @@ export function wipeAllPlayers(): number {
     /* ignore */
   }
   return n;
+}
+
+// ——— Backups (players + stats + leaderboard data) ———
+
+const BACKUPS_KEY = "ward-ncd-player-backups-v1";
+const MAX_BACKUPS = 10;
+
+export type PlayerBackupEntry = {
+  profile: PlayerProfile;
+  save: SaveData | null;
+};
+
+export type PlayerBackup = {
+  id: string;
+  createdAt: number;
+  label: string;
+  currentPlayerId: string | null;
+  players: PlayerBackupEntry[];
+};
+
+type BackupsIndex = {
+  version: number;
+  items: PlayerBackup[];
+};
+
+function loadBackupsIndex(): BackupsIndex {
+  if (!canUseStorage()) return { version: 1, items: [] };
+  try {
+    const raw = localStorage.getItem(BACKUPS_KEY);
+    const parsed = safeParse<BackupsIndex>(raw);
+    if (!parsed || !Array.isArray(parsed.items)) return { version: 1, items: [] };
+    return { version: 1, items: parsed.items };
+  } catch {
+    return { version: 1, items: [] };
+  }
+}
+
+function saveBackupsIndex(idx: BackupsIndex): void {
+  if (!canUseStorage()) return;
+  try {
+    localStorage.setItem(BACKUPS_KEY, JSON.stringify(idx));
+  } catch {
+    /* quota */
+  }
+}
+
+/** Snapshot all players + saves into local backup history (and return the snapshot). */
+export function createPlayerBackup(label = "manual"): PlayerBackup {
+  const index = loadProfilesIndex();
+  const backup: PlayerBackup = {
+    id: newId(),
+    createdAt: Date.now(),
+    label,
+    currentPlayerId: getCurrentPlayerId(),
+    players: index.players.map((profile) => ({
+      profile: { ...profile },
+      save: loadPlayerSave(profile.id),
+    })),
+  };
+  const idx = loadBackupsIndex();
+  idx.items.unshift(backup);
+  idx.items = idx.items.slice(0, MAX_BACKUPS);
+  saveBackupsIndex(idx);
+  return backup;
+}
+
+export function listPlayerBackups(): PlayerBackup[] {
+  return loadBackupsIndex().items;
+}
+
+export function deletePlayerBackup(backupId: string): void {
+  const idx = loadBackupsIndex();
+  idx.items = idx.items.filter((b) => b.id !== backupId);
+  saveBackupsIndex(idx);
+}
+
+/** Restore a backup: replaces all current player profiles and saves. */
+export function restorePlayerBackup(backupId: string): boolean {
+  const idx = loadBackupsIndex();
+  const backup = idx.items.find((b) => b.id === backupId);
+  if (!backup) return false;
+
+  // Snapshot current state before overwrite
+  createPlayerBackup("before-restore");
+
+  // Clear existing player saves
+  const current = loadProfilesIndex();
+  for (const p of current.players) clearPlayerSave(p.id);
+
+  writeProfilesIndex({
+    version: 1,
+    players: backup.players.map((e) => ({ ...e.profile })),
+  });
+  for (const e of backup.players) {
+    if (e.save) writePlayerSave(e.profile.id, migrate(e.save));
+    else writePlayerSave(e.profile.id, freshSave("th"));
+  }
+  const stillExists = backup.players.some(
+    (e) => e.profile.id === backup.currentPlayerId,
+  );
+  setCurrentPlayerId(stillExists ? backup.currentPlayerId : backup.players[0]?.profile.id ?? null);
+  return true;
+}
+
+/** Download backup as JSON file in the browser. */
+export function downloadPlayerBackup(backup: PlayerBackup): void {
+  if (typeof document === "undefined") return;
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const date = new Date(backup.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  a.href = url;
+  a.download = `ward-players-backup-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Import a backup JSON object into history (does not auto-restore). */
+export function importPlayerBackup(data: unknown): PlayerBackup | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = data as Partial<PlayerBackup>;
+  if (!Array.isArray(raw.players)) return null;
+  const backup: PlayerBackup = {
+    id: typeof raw.id === "string" ? raw.id : newId(),
+    createdAt: typeof raw.createdAt === "number" ? raw.createdAt : Date.now(),
+    label: typeof raw.label === "string" ? raw.label : "imported",
+    currentPlayerId:
+      typeof raw.currentPlayerId === "string" ? raw.currentPlayerId : null,
+    players: raw.players.map((e) => ({
+      profile: e.profile,
+      save: e.save ? migrate(e.save) : null,
+    })),
+  };
+  const idx = loadBackupsIndex();
+  // avoid duplicate id
+  if (idx.items.some((b) => b.id === backup.id)) {
+    backup.id = newId();
+  }
+  idx.items.unshift(backup);
+  idx.items = idx.items.slice(0, MAX_BACKUPS);
+  saveBackupsIndex(idx);
+  return backup;
 }
 
 /** Leaderboard entry built from all local profiles. */
