@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AdminScreen } from "./AdminFlow";
 import {
   BriefingScreen,
   GameOverScreen,
@@ -59,6 +60,8 @@ export function Game() {
       return <RecordsScreen />;
     case "leaderboard":
       return <LeaderboardScreen />;
+    case "admin":
+      return <AdminScreen />;
     case "handbook":
       return <HandbookScreen />;
     case "briefing":

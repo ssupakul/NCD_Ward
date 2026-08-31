@@ -5,12 +5,14 @@ import {
   ClipboardList,
   LogOut,
   Play,
+  Shield,
   Trophy,
   Trash2,
   UserPlus,
   Users,
 } from "lucide-react";
-import { DISEASES, DISEASE_ORDER, loc } from "./content";
+import { getDiseaseOrder, getDiseases } from "./catalog";
+import { loc } from "./content";
 import {
   getLeaderboard,
   loadPlayerSave,
@@ -35,6 +37,7 @@ export function TitleScreen() {
   const selectPlayer = useGame((s) => s.selectPlayer);
   const removePlayer = useGame((s) => s.removePlayer);
   const logoutPlayer = useGame((s) => s.logoutPlayer);
+  const openAdmin = useGame((s) => s.openAdmin);
 
   const [nameInput, setNameInput] = useState("");
   const [mode, setMode] = useState<"menu" | "register" | "select">("menu");
@@ -58,6 +61,16 @@ export function TitleScreen() {
         />
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/88 to-background/35" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/50" />
+
+        <button
+          type="button"
+          onClick={openAdmin}
+          className="absolute right-4 top-4 z-20 inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-background/70 px-3 text-sm text-muted backdrop-blur-sm hover:text-foreground"
+          aria-label={t("แอดมิน", "Admin")}
+        >
+          <Shield className="size-4" />
+          <span className="hidden sm:inline">Admin</span>
+        </button>
 
         <div className="relative mx-auto flex min-h-dvh max-w-6xl flex-col justify-end px-5 pb-10 pt-8 md:justify-center md:pb-16">
           <div className="max-w-xl ward-enter-slow">
@@ -240,6 +253,16 @@ export function TitleScreen() {
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/88 to-background/35" />
       <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/50" />
 
+      <button
+        type="button"
+        onClick={openAdmin}
+        className="absolute right-4 top-4 z-20 inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-background/70 px-3 text-sm text-muted backdrop-blur-sm hover:text-foreground"
+        aria-label={t("แอดมิน", "Admin")}
+      >
+        <Shield className="size-4" />
+        <span className="hidden sm:inline">Admin</span>
+      </button>
+
       <div className="relative mx-auto flex min-h-dvh max-w-6xl flex-col justify-end px-5 pb-10 pt-8 md:justify-center md:pb-16">
         <div className="max-w-xl ward-enter-slow">
           <div className="mb-5 flex items-center gap-3">
@@ -364,8 +387,9 @@ export function HandbookScreen() {
         )}
       </p>
       <div className="mt-6 grid gap-3">
-        {DISEASE_ORDER.map((id) => {
-          const d = DISEASES[id];
+        {getDiseaseOrder().map((id) => {
+          const d = getDiseases()[id];
+          if (!d) return null;
           return (
             <article
               key={id}

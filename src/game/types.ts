@@ -8,6 +8,7 @@ export type Screen =
   | "records"
   | "leaderboard"
   | "handbook"
+  | "admin"
   | "briefing"
   | "waiting"
   | "consult"

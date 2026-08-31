@@ -1,5 +1,13 @@
-import { ACTIONS, DISEASES, TESTS } from "./content";
-import { CASE_BY_ID, CASES, DAY_MINUTES, DAY_PLANS } from "./cases";
+import {
+  actionLabel,
+  diseaseLabel,
+  getActions,
+  getCaseDef,
+  listCases,
+  testLabel,
+  testMinutes,
+} from "./catalog";
+import { DAY_MINUTES, DAY_PLANS } from "./cases";
 import type {
   ActionId,
   CaseDef,
@@ -13,7 +21,7 @@ import type {
 } from "./types";
 
 export function getCase(id: string): CaseDef {
-  const c = CASE_BY_ID[id];
+  const c = getCaseDef(id);
   if (!c) throw new Error(`Unknown case ${id}`);
   return c;
 }
@@ -24,9 +32,18 @@ export function minutesForDay(day: number): number {
 }
 
 export function planForDay(day: number): string[] {
-  if (day <= DAY_PLANS.length) return [...(DAY_PLANS[day - 1] ?? DAY_PLANS[0])];
-  const pool = CASES.map((c) => c.id);
-  const n = 5 + (day % 2);
+  const all = listCases();
+  const pool = all.map((c) => c.id);
+  if (pool.length === 0) return [];
+
+  if (day <= DAY_PLANS.length) {
+    const planned = [...(DAY_PLANS[day - 1] ?? DAY_PLANS[0]!)];
+    // Drop ids that were deleted; fill from pool if needed
+    const valid = planned.filter((id) => pool.includes(id));
+    if (valid.length >= planned.length * 0.5) return valid;
+  }
+
+  const n = Math.min(pool.length, 5 + (day % 2));
   const start = (day * 3) % pool.length;
   const out: string[] = [];
   for (let i = 0; i < n; i++) out.push(pool[(start + i) % pool.length]!);
@@ -71,6 +88,7 @@ export function scoreConsult(
 ): Debrief {
   const lines: DebriefLine[] = [];
   let score = 0;
+  const actions = getActions();
 
   for (const d of c.requiredDx) {
     if (dx.includes(d)) {
@@ -79,8 +97,8 @@ export function scoreConsult(
         kind: "ok",
         delta: 16,
         text: {
-          th: `วินิจฉัย ${DISEASES[d].label.th} ถูกต้อง`,
-          en: `Correct diagnosis: ${DISEASES[d].label.en}`,
+          th: `วินิจฉัย ${diseaseLabel(d, "th")} ถูกต้อง`,
+          en: `Correct diagnosis: ${diseaseLabel(d, "en")}`,
         },
       });
     } else {
@@ -89,8 +107,8 @@ export function scoreConsult(
         kind: "miss",
         delta: -14,
         text: {
-          th: `พลาด ${DISEASES[d].label.th}`,
-          en: `Missed ${DISEASES[d].label.en}`,
+          th: `พลาด ${diseaseLabel(d, "th")}`,
+          en: `Missed ${diseaseLabel(d, "en")}`,
         },
       });
     }
@@ -103,8 +121,8 @@ export function scoreConsult(
         kind: "bad",
         delta: -8,
         text: {
-          th: `วินิจฉัยเกิน: ${DISEASES[d].label.th}`,
-          en: `Over-called ${DISEASES[d].label.en}`,
+          th: `วินิจฉัยเกิน: ${diseaseLabel(d, "th")}`,
+          en: `Over-called ${diseaseLabel(d, "en")}`,
         },
       });
     }
@@ -117,8 +135,8 @@ export function scoreConsult(
         kind: "bonus",
         delta: 6,
         text: {
-          th: `จับ ${DISEASES[extra].label.th} ได้ด้วย`,
-          en: `Also caught ${DISEASES[extra].label.en}`,
+          th: `จับ ${diseaseLabel(extra, "th")} ได้ด้วย`,
+          en: `Also caught ${diseaseLabel(extra, "en")}`,
         },
       });
     }
@@ -132,13 +150,16 @@ export function scoreConsult(
         kind: "ok",
         delta: 10,
         text: {
-          th: `แผนถูก: ${ACTIONS[hit].label.th}`,
-          en: `Plan includes ${ACTIONS[hit].label.en}`,
+          th: `แผนถูก: ${actionLabel(hit, "th")}`,
+          en: `Plan includes ${actionLabel(hit, "en")}`,
         },
       });
     } else {
       score -= 10;
-      const names = group.map((a) => ACTIONS[a].label);
+      const names = group.map((a) => ({
+        th: actionLabel(a, "th"),
+        en: actionLabel(a, "en"),
+      }));
       lines.push({
         kind: "miss",
         delta: -10,
@@ -157,8 +178,8 @@ export function scoreConsult(
         kind: "bonus",
         delta: 5,
         text: {
-          th: `โบนัส: ${ACTIONS[a].label.th}`,
-          en: `Bonus: ${ACTIONS[a].label.en}`,
+          th: `โบนัส: ${actionLabel(a, "th")}`,
+          en: `Bonus: ${actionLabel(a, "en")}`,
         },
       });
     }
@@ -178,8 +199,8 @@ export function scoreConsult(
         kind: "bad",
         delta: -18,
         text: {
-          th: `อันตราย: ${ACTIONS[a].label.th}`,
-          en: `Harmful: ${ACTIONS[a].label.en}`,
+          th: `อันตราย: ${actionLabel(a, "th")}`,
+          en: `Harmful: ${actionLabel(a, "en")}`,
         },
       });
     } else if (!known.has(a)) {
@@ -188,8 +209,8 @@ export function scoreConsult(
         kind: "bad",
         delta: -3,
         text: {
-          th: `ไม่จำเป็น: ${ACTIONS[a].label.th}`,
-          en: `Unnecessary: ${ACTIONS[a].label.en}`,
+          th: `ไม่จำเป็น: ${actionLabel(a, "th")}`,
+          en: `Unnecessary: ${actionLabel(a, "en")}`,
         },
       });
     }
@@ -202,8 +223,8 @@ export function scoreConsult(
         kind: "ok",
         delta: 4,
         text: {
-          th: `แล็บคุ้ม: ${TESTS[t].label.th}`,
-          en: `Useful test: ${TESTS[t].label.en}`,
+          th: `แล็บคุ้ม: ${testLabel(t, "th")}`,
+          en: `Useful test: ${testLabel(t, "en")}`,
         },
       });
     }
@@ -215,8 +236,8 @@ export function scoreConsult(
         kind: "bad",
         delta: -3,
         text: {
-          th: `แล็บเกิน: ${TESTS[t].label.th}`,
-          en: `Low-yield test: ${TESTS[t].label.en}`,
+          th: `แล็บเกิน: ${testLabel(t, "th")}`,
+          en: `Low-yield test: ${testLabel(t, "en")}`,
         },
       });
     } else if (!c.usefulTests.includes(t) && t in c.testResults) {
@@ -225,12 +246,15 @@ export function scoreConsult(
         kind: "bad",
         delta: -2,
         text: {
-          th: `แล็บไม่จำเป็น: ${TESTS[t].label.th}`,
-          en: `Unneeded test: ${TESTS[t].label.en}`,
+          th: `แล็บไม่จำเป็น: ${testLabel(t, "th")}`,
+          en: `Unneeded test: ${testLabel(t, "en")}`,
         },
       });
     }
   }
+
+  // silence unused if no custom actions labeled
+  void actions;
 
   const perfect =
     c.requiredDx.every((d) => dx.includes(d)) &&
@@ -264,5 +288,5 @@ export function reputationDelta(grade: Grade, missed: number): number {
 }
 
 export function testCost(id: TestId): number {
-  return TESTS[id].minutes;
+  return testMinutes(id);
 }

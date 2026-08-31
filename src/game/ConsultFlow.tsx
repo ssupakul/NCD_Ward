@@ -1,17 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  ACTION_ORDER,
-  ACTIONS,
-  DISEASE_ORDER,
-  DISEASES,
-  loc,
-  TEST_ORDER,
-  TESTS,
-} from "./content";
+  getActionOrder,
+  getActions,
+  getDiseaseOrder,
+  getDiseases,
+  getTestOrder,
+  getTests,
+} from "./catalog";
+import { loc } from "./content";
 import { getCase } from "./engine";
 import { useGame } from "./store";
-import type { ActionGroup, Grade } from "./types";
+import type { ActionGroup, ActionId, DiseaseId, Grade, TestId } from "./types";
 import { Chip, Paper, Portrait, useT } from "./ui";
 import { Hud } from "./ClinicFlow";
 
@@ -111,10 +111,13 @@ export function ConsultScreen() {
 
             {tab === "labs" ? (
               <div className="space-y-2">
-                {TEST_ORDER.map((id) => {
-                  const ordered = p.tests.includes(id);
-                  const result = ordered ? c.testResults[id] : undefined;
-                  const test = TESTS[id];
+                {getTestOrder().map((id) => {
+                  const ordered = p.tests.includes(id as TestId);
+                  const result = ordered
+                    ? c.testResults[id as TestId]
+                    : undefined;
+                  const test = getTests()[id];
+                  if (!test) return null;
                   return (
                     <div
                       key={id}
@@ -137,7 +140,7 @@ export function ConsultScreen() {
                         <Button
                           variant="ink"
                           size="sm"
-                          onClick={() => orderTest(id)}
+                          onClick={() => orderTest(id as TestId)}
                           disabled={shift.minutesLeft < test.minutes}
                         >
                           {t("สั่ง", "Order")}
@@ -156,15 +159,19 @@ export function ConsultScreen() {
                     {t("วินิจฉัย", "Diagnoses")}
                   </h3>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {DISEASE_ORDER.map((id) => (
-                      <Chip
-                        key={id}
-                        on={p.diagnoses.includes(id)}
-                        onClick={() => toggleDx(id)}
-                      >
-                        {loc(lang, DISEASES[id].label)}
-                      </Chip>
-                    ))}
+                    {getDiseaseOrder().map((id) => {
+                      const d = getDiseases()[id];
+                      if (!d) return null;
+                      return (
+                        <Chip
+                          key={id}
+                          on={p.diagnoses.includes(id as DiseaseId)}
+                          onClick={() => toggleDx(id as DiseaseId)}
+                        >
+                          {loc(lang, d.label)}
+                        </Chip>
+                      );
+                    })}
                   </div>
                 </section>
                 <PlanGroup
@@ -222,18 +229,27 @@ function PlanGroup({
   onToggle: (id: import("./types").ActionId) => void;
 }) {
   const lang = useGame((s) => s.lang);
-  const ids = ACTION_ORDER.filter((id) => ACTIONS[id].group === group);
+  const actions = getActions();
+  const ids = getActionOrder().filter((id) => actions[id]?.group === group);
   return (
     <section>
       <h3 className="font-sans text-sm font-medium tracking-normal text-paper-muted">
         {title}
       </h3>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {ids.map((id) => (
-          <Chip key={id} on={selected.includes(id)} onClick={() => onToggle(id)}>
-            {loc(lang, ACTIONS[id].label)}
-          </Chip>
-        ))}
+        {ids.map((id) => {
+          const a = actions[id];
+          if (!a) return null;
+          return (
+            <Chip
+              key={id}
+              on={selected.includes(id)}
+              onClick={() => onToggle(id as ActionId)}
+            >
+              {loc(lang, a.label)}
+            </Chip>
+          );
+        })}
       </div>
     </section>
   );

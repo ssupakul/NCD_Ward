@@ -44,6 +44,8 @@ type GameState = SaveData & {
   continueCareer: () => void;
   openOverlay: (o: Overlay) => void;
   closeOverlay: () => void;
+  openAdmin: () => void;
+  closeAdmin: () => void;
   startShift: () => void;
   openPatient: (id: string) => void;
   setTab: (tab: ShiftState["tab"]) => void;
@@ -319,6 +321,21 @@ export const useGame = create<GameState>((set, get) => ({
   closeOverlay: () => {
     const back = get().returnScreen ?? (get().shift ? "waiting" : "title");
     set({ screen: back, returnScreen: null });
+  },
+
+  openAdmin: () => {
+    unlockAudio();
+    sfxClick();
+    set({
+      screen: "admin",
+      overlay: null,
+      returnScreen: get().screen === "admin" ? "title" : get().screen,
+    });
+  },
+
+  closeAdmin: () => {
+    sfxClick();
+    set({ screen: "title", returnScreen: null, overlay: null });
   },
 
   startShift: () => {
