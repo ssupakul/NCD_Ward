@@ -158,7 +158,8 @@ export function blankCase(id?: string): CaseDef {
     vitals: { bp: "120/80", hr: 72, bmi: 24, spo2: 98, temp: 36.8 },
     flags: [],
     urgency: 1,
-    difficulty: 1,
+    /** Admin can change; used when player picks Easy / Medium / Hard */
+    difficulty: 2,
     trueDiagnoses: ["htn"],
     testResults: {},
     usefulTests: [],

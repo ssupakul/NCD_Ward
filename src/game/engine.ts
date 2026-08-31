@@ -33,10 +33,18 @@ export function minutesForDay(day: number): number {
   return 50;
 }
 
-/** Cases allowed at this player difficulty (easy = only 1, hard = 1–3). */
+/**
+ * Use each case's `difficulty` field (set in Admin / cases data).
+ * Player Easy → only difficulty 1 · Medium → 1–2 · Hard → 1–3.
+ */
 export function casesForDifficulty(level: Difficulty): CaseDef[] {
   const all = listCases();
-  const matched = all.filter((c) => c.difficulty <= level);
+  const matched = all.filter((c) => {
+    const d = c.difficulty;
+    const normalized: Difficulty =
+      d === 1 || d === 2 || d === 3 ? d : 2;
+    return normalized <= level;
+  });
   if (matched.length > 0) return matched;
   return all;
 }

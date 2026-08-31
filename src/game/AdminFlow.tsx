@@ -324,6 +324,12 @@ function CasesAdmin({
               <div className="font-medium">{loc(lang, c.name)}</div>
               <div className="text-xs text-muted">
                 {c.id} · {t(`อายุ ${c.age}`, `Age ${c.age}`)} ·{" "}
+                {c.difficulty === 1
+                  ? t("ง่าย", "Easy")
+                  : c.difficulty === 2
+                    ? t("ปานกลาง", "Medium")
+                    : t("ยาก", "Hard")}{" "}
+                ·{" "}
                 {isBuiltinCase(c.id)
                   ? t("ในตัวเกม", "Built-in")
                   : t("กำหนดเอง", "Custom")}
@@ -470,6 +476,25 @@ function CaseEditor({
             <option value={1}>1</option>
             <option value={2}>2</option>
             <option value={3}>3</option>
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="text-muted">
+            {t("ระดับความยากของเคส", "Case difficulty")}
+          </span>
+          <select
+            className="mt-1 w-full rounded-lg border border-foreground/15 bg-background px-3 py-2"
+            value={c.difficulty}
+            onChange={(e) =>
+              setC({
+                ...c,
+                difficulty: Number(e.target.value) as 1 | 2 | 3,
+              })
+            }
+          >
+            <option value={1}>{t("1 — ง่าย", "1 — Easy")}</option>
+            <option value={2}>{t("2 — ปานกลาง", "2 — Medium")}</option>
+            <option value={3}>{t("3 — ยาก", "3 — Hard")}</option>
           </select>
         </label>
         <label className="text-sm">
