@@ -15,6 +15,13 @@ import {
   type PlayerProfile,
   type SaveData,
 } from "./save";
+import {
+  deletePlayerFn,
+  getPlayerFn,
+  listPlayersFn,
+  registerPlayerFn,
+  upsertPlayerSaveFn,
+} from "./playerApi";
 import { loadScoring } from "./scoring";
 import type { ActionId, DiseaseId, Lang, Screen, ShiftState, TestId } from "./types";
 
@@ -117,52 +124,103 @@ export const useGame = create<GameState>((set, get) => ({
   players: [],
 
   hydrate: () => {
-    try {
-      const index = loadProfilesIndex();
-      const currentId = getCurrentPlayerId();
-      const profile = currentId
-        ? index.players.find((p) => p.id === currentId) ?? null
-        : null;
-      if (!profile) {
+    void (async () => {
+      try {
+        // Prefer server registry (shared across devices)
+        let serverPlayers: PlayerProfile[] = [];
+        let serverOk = false;
+        try {
+          const list = await listPlayersFn();
+          serverOk = true;
+          serverPlayers = list.map((p) => ({
+            id: p.id,
+            name: p.name,
+            createdAt: p.createdAt,
+            lastPlayed: p.lastPlayed,
+          }));
+        } catch {
+          serverOk = false;
+        }
+
+        const currentId = getCurrentPlayerId();
+        if (serverOk) {
+          const profile =
+            (currentId
+              ? serverPlayers.find((p) => p.id === currentId)
+              : null) ?? null;
+          if (!profile) {
+            set({
+              hydrated: true,
+              hasSave: false,
+              playerId: null,
+              playerName: null,
+              players: serverPlayers,
+              screen: "title",
+              shift: null,
+            });
+            return;
+          }
+          const remote = await getPlayerFn({ data: profile.id });
+          const saved = remote?.save ?? null;
+          const applied = applySave(saved);
+          // Mirror to local cache for offline resilience
+          if (saved) writePlayerSave(profile.id, saved);
+          set({
+            ...applied,
+            lang: saved?.lang ?? get().lang,
+            hydrated: true,
+            playerId: profile.id,
+            playerName: profile.name,
+            players: serverPlayers,
+          });
+          return;
+        }
+
+        // Fallback: localStorage-only (no DB / offline)
+        const index = loadProfilesIndex();
+        const profile = currentId
+          ? index.players.find((p) => p.id === currentId) ?? null
+          : null;
+        if (!profile) {
+          set({
+            hydrated: true,
+            hasSave: false,
+            playerId: null,
+            playerName: null,
+            players: index.players,
+            screen: "title",
+            shift: null,
+          });
+          return;
+        }
+        const saved = loadPlayerSave(profile.id);
+        const applied = applySave(saved);
+        set({
+          ...applied,
+          lang: saved?.lang ?? get().lang,
+          hydrated: true,
+          playerId: profile.id,
+          playerName: profile.name,
+          players: index.players,
+        });
+      } catch {
         set({
           hydrated: true,
           hasSave: false,
           playerId: null,
           playerName: null,
-          players: index.players,
+          players: [],
           screen: "title",
           shift: null,
         });
-        return;
       }
-      const saved = loadPlayerSave(profile.id);
-      const applied = applySave(saved);
-      set({
-        ...applied,
-        lang: saved?.lang ?? get().lang,
-        hydrated: true,
-        playerId: profile.id,
-        playerName: profile.name,
-        players: index.players,
-      });
-    } catch {
-      // Never leave the UI stuck on the loading spinner
-      set({
-        hydrated: true,
-        hasSave: false,
-        playerId: null,
-        playerName: null,
-        players: [],
-        screen: "title",
-        shift: null,
-      });
-    }
+    })();
   },
 
   persist: () => {
     const s = get();
     if (!s.playerId) return;
-    writePlayerSave(s.playerId, {
+    const payload: SaveData = {
       version: 2,
       lang: s.lang,
       difficulty: s.difficulty,
@@ -173,8 +231,16 @@ export const useGame = create<GameState>((set, get) => ({
       perfectCases: s.perfectCases,
       bestShiftScore: s.bestShiftScore,
       careerComplete: s.careerComplete,
-    });
+    };
+    // Local cache always
+    writePlayerSave(s.playerId, payload);
     touchPlayer(s.playerId);
+    // Server source of truth (fire-and-forget)
+    void upsertPlayerSaveFn({
+      data: { id: s.playerId, save: payload, touch: true },
+    }).catch(() => {
+      /* offline / no DB */
+    });
   },
 
   setLang: (lang) => {
@@ -192,84 +258,175 @@ export const useGame = create<GameState>((set, get) => ({
   registerPlayer: (name) => {
     unlockAudio();
     sfxClick();
-    const profile = createPlayer(name, get().lang);
-    const saved = loadPlayerSave(profile.id);
-    const applied = applySave(saved);
-    const index = loadProfilesIndex();
-    set({
-      ...applied,
-      lang: saved?.lang ?? get().lang,
-      playerId: profile.id,
-      playerName: profile.name,
-      players: index.players,
-      screen: "title",
-      overlay: null,
-      shift: null,
-      lastRepDelta: 0,
-    });
+    void (async () => {
+      try {
+        const remote = await registerPlayerFn({
+          data: { name, lang: get().lang },
+        });
+        setCurrentPlayerId(remote.id);
+        writePlayerSave(remote.id, remote.save);
+        const list = await listPlayersFn();
+        const players = list.map((p) => ({
+          id: p.id,
+          name: p.name,
+          createdAt: p.createdAt,
+          lastPlayed: p.lastPlayed,
+        }));
+        const applied = applySave(remote.save);
+        set({
+          ...applied,
+          lang: remote.save.lang,
+          playerId: remote.id,
+          playerName: remote.name,
+          players,
+          screen: "title",
+          overlay: null,
+          shift: null,
+          lastRepDelta: 0,
+        });
+      } catch {
+        // Offline fallback
+        const profile = createPlayer(name, get().lang);
+        const saved = loadPlayerSave(profile.id);
+        const applied = applySave(saved);
+        const index = loadProfilesIndex();
+        set({
+          ...applied,
+          lang: saved?.lang ?? get().lang,
+          playerId: profile.id,
+          playerName: profile.name,
+          players: index.players,
+          screen: "title",
+          overlay: null,
+          shift: null,
+          lastRepDelta: 0,
+        });
+      }
+    })();
   },
 
   selectPlayer: (id) => {
     unlockAudio();
     sfxClick();
-    const index = loadProfilesIndex();
-    const profile = index.players.find((p) => p.id === id);
-    if (!profile) return;
-    setCurrentPlayerId(id);
-    touchPlayer(id);
-    const saved = loadPlayerSave(id);
-    const applied = applySave(saved);
-    set({
-      ...applied,
-      lang: saved?.lang ?? get().lang,
-      playerId: profile.id,
-      playerName: profile.name,
-      players: index.players,
-      screen: "title",
-      overlay: null,
-      shift: null,
-      lastRepDelta: 0,
-    });
+    void (async () => {
+      try {
+        const remote = await getPlayerFn({ data: id });
+        if (remote) {
+          setCurrentPlayerId(id);
+          writePlayerSave(id, remote.save);
+          const list = await listPlayersFn();
+          const players = list.map((p) => ({
+            id: p.id,
+            name: p.name,
+            createdAt: p.createdAt,
+            lastPlayed: p.lastPlayed,
+          }));
+          const applied = applySave(remote.save);
+          set({
+            ...applied,
+            lang: remote.save.lang,
+            playerId: remote.id,
+            playerName: remote.name,
+            players,
+            screen: "title",
+            overlay: null,
+            shift: null,
+            lastRepDelta: 0,
+          });
+          return;
+        }
+      } catch {
+        /* fall through local */
+      }
+      const index = loadProfilesIndex();
+      const profile = index.players.find((p) => p.id === id);
+      if (!profile) return;
+      setCurrentPlayerId(id);
+      touchPlayer(id);
+      const saved = loadPlayerSave(id);
+      const applied = applySave(saved);
+      set({
+        ...applied,
+        lang: saved?.lang ?? get().lang,
+        playerId: profile.id,
+        playerName: profile.name,
+        players: index.players,
+        screen: "title",
+        overlay: null,
+        shift: null,
+        lastRepDelta: 0,
+      });
+    })();
   },
 
   removePlayer: (id) => {
     unlockAudio();
     sfxClick();
-    const wasCurrent = get().playerId === id;
-    deletePlayer(id);
-    const index = loadProfilesIndex();
-    if (wasCurrent) {
-      const next = index.players[0] ?? null;
-      if (next) {
-        setCurrentPlayerId(next.id);
-        const saved = loadPlayerSave(next.id);
-        const applied = applySave(saved);
-        set({
-          ...applied,
-          lang: saved?.lang ?? get().lang,
-          playerId: next.id,
-          playerName: next.name,
-          players: index.players,
-          screen: "title",
-          overlay: null,
-          shift: null,
-        });
-      } else {
-        setCurrentPlayerId(null);
-        set({
-          ...applySave(null),
-          playerId: null,
-          playerName: null,
-          players: [],
-          screen: "title",
-          overlay: null,
-          shift: null,
-          hasSave: false,
-        });
+    void (async () => {
+      const wasCurrent = get().playerId === id;
+      try {
+        await deletePlayerFn({ data: id });
+      } catch {
+        /* ignore */
       }
-    } else {
-      set({ players: index.players });
-    }
+      deletePlayer(id);
+      clearPlayerSave(id);
+
+      let players: PlayerProfile[] = [];
+      try {
+        const list = await listPlayersFn();
+        players = list.map((p) => ({
+          id: p.id,
+          name: p.name,
+          createdAt: p.createdAt,
+          lastPlayed: p.lastPlayed,
+        }));
+      } catch {
+        players = loadProfilesIndex().players;
+      }
+
+      if (wasCurrent) {
+        const next = players[0] ?? null;
+        if (next) {
+          setCurrentPlayerId(next.id);
+          let saved = loadPlayerSave(next.id);
+          try {
+            const remote = await getPlayerFn({ data: next.id });
+            if (remote) {
+              saved = remote.save;
+              writePlayerSave(next.id, remote.save);
+            }
+          } catch {
+            /* local */
+          }
+          const applied = applySave(saved);
+          set({
+            ...applied,
+            lang: saved?.lang ?? get().lang,
+            playerId: next.id,
+            playerName: next.name,
+            players,
+            screen: "title",
+            overlay: null,
+            shift: null,
+          });
+        } else {
+          setCurrentPlayerId(null);
+          set({
+            ...applySave(null),
+            playerId: null,
+            playerName: null,
+            players: [],
+            screen: "title",
+            overlay: null,
+            shift: null,
+            hasSave: false,
+          });
+        }
+      } else {
+        set({ players });
+      }
+    })();
   },
 
   logoutPlayer: () => {
@@ -277,16 +434,30 @@ export const useGame = create<GameState>((set, get) => ({
     sfxClick();
     get().persist();
     setCurrentPlayerId(null);
-    set({
-      ...applySave(null),
-      playerId: null,
-      playerName: null,
-      players: loadProfilesIndex().players,
-      screen: "title",
-      overlay: null,
-      shift: null,
-      hasSave: false,
-    });
+    void (async () => {
+      let players: PlayerProfile[] = [];
+      try {
+        const list = await listPlayersFn();
+        players = list.map((p) => ({
+          id: p.id,
+          name: p.name,
+          createdAt: p.createdAt,
+          lastPlayed: p.lastPlayed,
+        }));
+      } catch {
+        players = loadProfilesIndex().players;
+      }
+      set({
+        ...applySave(null),
+        playerId: null,
+        playerName: null,
+        players,
+        screen: "title",
+        overlay: null,
+        shift: null,
+        hasSave: false,
+      });
+    })();
   },
 
   newCareer: () => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   BookOpen,
@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { getDiseaseOrder, getDiseases } from "./catalog";
 import { loc } from "./content";
+import { getLeaderboardFn } from "./playerApi";
 import {
   getLeaderboard,
   loadPlayerSave,
+  type LeaderboardEntry,
   type LeaderboardSort,
 } from "./save";
 import { useGame } from "./store";
@@ -472,16 +474,39 @@ export function LeaderboardScreen() {
   const close = useGame((s) => s.closeOverlay);
   const playerId = useGame((s) => s.playerId);
   const [sortBy, setSortBy] = useState<LeaderboardSort>("careerScore");
+  const [board, setBoard] = useState<LeaderboardEntry[]>([]);
+  const [source, setSource] = useState<"server" | "local" | "loading">(
+    "loading",
+  );
 
-  // Recompute when sort changes; also when screen opens (players may have updated)
-  const board = useMemo(() => getLeaderboard(sortBy), [sortBy]);
+  useEffect(() => {
+    let cancelled = false;
+    setSource("loading");
+    void (async () => {
+      try {
+        const rows = await getLeaderboardFn({ data: sortBy });
+        if (!cancelled) {
+          setBoard(rows);
+          setSource("server");
+        }
+      } catch {
+        if (!cancelled) {
+          setBoard(getLeaderboard(sortBy));
+          setSource("local");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sortBy]);
 
   const metricLabel = (id: LeaderboardSort) => {
     const o = SORT_OPTIONS.find((x) => x.id === id)!;
     return t(o.th, o.en);
   };
 
-  const metricValue = (e: (typeof board)[number]) => {
+  const metricValue = (e: LeaderboardEntry) => {
     switch (sortBy) {
       case "bestShiftScore":
         return e.bestShiftScore;
@@ -497,10 +522,17 @@ export function LeaderboardScreen() {
   return (
     <InfoShell title={t("อันดับคลินิก", "Clinic leaderboard")} onBack={close}>
       <p className="text-muted">
-        {t(
-          "จัดอันดับจากสถิติของผู้เล่นทุกคนบนเครื่องนี้ — เรียงตามตัวชี้วัดที่เลือก",
-          "Ranks every registered player on this device by the selected metric.",
-        )}
+        {source === "server"
+          ? t(
+              "อันดับจากเซิร์ฟเวอร์กลาง — เห็นผู้เล่นจากทุกเครื่อง",
+              "Shared server ranking — players from every device.",
+            )
+          : source === "local"
+            ? t(
+                "โหมดออฟไลน์ — อันดับเฉพาะเครื่องนี้ (เซิร์ฟเวอร์ไม่พร้อม)",
+                "Offline mode — ranking for this device only (server unavailable).",
+              )
+            : t("กำลังโหลดอันดับ…", "Loading rankings…")}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">

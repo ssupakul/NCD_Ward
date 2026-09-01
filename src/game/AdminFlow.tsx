@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   KeyRound,
@@ -16,6 +16,13 @@ import {
   tryAdminLogin,
 } from "./admin";
 import {
+  deletePlayerFn,
+  getLeaderboardFn,
+  resetAllPlayerStatsFn,
+  resetPlayerStatsFn,
+  wipeAllPlayersFn,
+} from "./playerApi";
+import {
   createPlayerBackup,
   deletePlayer,
   deletePlayerBackup,
@@ -28,6 +35,7 @@ import {
   resetPlayerStats,
   restorePlayerBackup,
   wipeAllPlayers,
+  type LeaderboardEntry,
   type PlayerBackup,
 } from "./save";
 import {
@@ -1150,24 +1158,47 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
   const [backups, setBackups] = useState<PlayerBackup[]>(() =>
     listPlayerBackups(),
   );
-  const players = loadProfilesIndex().players;
-  const board = getLeaderboard("careerScore");
+  const [board, setBoard] = useState<LeaderboardEntry[]>([]);
+  const [serverMode, setServerMode] = useState(false);
 
   const refreshBackups = () => setBackups(listPlayerBackups());
+
+  const refreshBoard = () => {
+    void (async () => {
+      try {
+        const rows = await getLeaderboardFn({ data: "careerScore" });
+        setBoard(rows);
+        setServerMode(true);
+      } catch {
+        setBoard(getLeaderboard("careerScore"));
+        setServerMode(false);
+      }
+    })();
+  };
+
+  useEffect(() => {
+    refreshBoard();
+  }, []);
 
   const afterReset = () => {
     hydrate();
     onChange();
     refreshBackups();
+    refreshBoard();
   };
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted">
-        {t(
-          "รีเซ็ตคะแนน / อันดับ / ลบผู้เล่น — ระบบสำรองข้อมูลอัตโนมัติก่อนรีเซ็ต และดาวน์โหลด/กู้คืนได้",
-          "Reset scores, rankings, or delete players — auto-backup before reset; download and restore supported.",
-        )}
+        {serverMode
+          ? t(
+              "ข้อมูลผู้เล่นจากเซิร์ฟเวอร์กลาง — รีเซ็ตมีผลกับทุกเครื่อง",
+              "Players from the shared server — resets apply everywhere.",
+            )
+          : t(
+              "โหมดออฟไลน์ — จัดการเฉพาะเครื่องนี้ (เซิร์ฟเวอร์ไม่พร้อม)",
+              "Offline mode — this device only (server unavailable).",
+            )}
       </p>
 
       {/* Backup actions */}
@@ -1327,14 +1358,22 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
               )
             )
               return;
-            const n = resetAllPlayerStats();
-            afterReset();
-            setMsg(
-              t(
-                `สำรองแล้ว และรีเซ็ตสถิติ ${n} คน`,
-                `Backed up and reset stats for ${n} player(s)`,
-              ),
-            );
+            void (async () => {
+              createPlayerBackup("before-reset-stats");
+              let n = 0;
+              try {
+                n = await resetAllPlayerStatsFn();
+              } catch {
+                n = resetAllPlayerStats({ skipBackup: true });
+              }
+              afterReset();
+              setMsg(
+                t(
+                  `สำรองแล้ว และรีเซ็ตสถิติ ${n} คน`,
+                  `Backed up and reset stats for ${n} player(s)`,
+                ),
+              );
+            })();
           }}
         >
           {t("รีเซ็ตคะแนนทุกคน", "Reset all scores")}
@@ -1360,14 +1399,22 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
               )
             )
               return;
-            const n = wipeAllPlayers();
-            afterReset();
-            setMsg(
-              t(
-                `สำรองแล้ว และลบผู้เล่น ${n} คน`,
-                `Backed up and wiped ${n} player(s)`,
-              ),
-            );
+            void (async () => {
+              createPlayerBackup("before-wipe");
+              let n = 0;
+              try {
+                n = await wipeAllPlayersFn();
+              } catch {
+                n = wipeAllPlayers({ skipBackup: true });
+              }
+              afterReset();
+              setMsg(
+                t(
+                  `สำรองแล้ว และลบผู้เล่น ${n} คน`,
+                  `Backed up and wiped ${n} player(s)`,
+                ),
+              );
+            })();
           }}
         >
           {t("ลบผู้เล่นทั้งหมด", "Wipe all players")}
@@ -1376,7 +1423,7 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
 
       {msg ? <p className="text-sm text-ok">{msg}</p> : null}
 
-      {players.length === 0 ? (
+      {board.length === 0 ? (
         <p className="text-muted">
           {t("ยังไม่มีผู้เล่นลงทะเบียน", "No registered players")}
         </p>
@@ -1411,14 +1458,20 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
                     )
                   )
                     return;
-                  resetPlayerStats(e.id);
-                  afterReset();
-                  setMsg(
-                    t(
-                      `รีเซ็ตสถิติของ ${e.name} แล้ว`,
-                      `Reset stats for ${e.name}`,
-                    ),
-                  );
+                  void (async () => {
+                    try {
+                      await resetPlayerStatsFn({ data: { id: e.id } });
+                    } catch {
+                      resetPlayerStats(e.id);
+                    }
+                    afterReset();
+                    setMsg(
+                      t(
+                        `รีเซ็ตสถิติของ ${e.name} แล้ว`,
+                        `Reset stats for ${e.name}`,
+                      ),
+                    );
+                  })();
                 }}
               >
                 {t("รีเซ็ตคะแนน", "Reset score")}
@@ -1431,17 +1484,23 @@ function PlayersAdmin({ onChange }: { onChange: () => void }) {
                   if (
                     !window.confirm(
                       t(
-                        `ลบผู้เล่น "${e.name}" ออกจากเครื่องนี้?`,
-                        `Delete player "${e.name}" from this device?`,
+                        `ลบผู้เล่น "${e.name}"?`,
+                        `Delete player "${e.name}"?`,
                       ),
                     )
                   )
                     return;
-                  deletePlayer(e.id);
-                  afterReset();
-                  setMsg(
-                    t(`ลบ ${e.name} แล้ว`, `Deleted ${e.name}`),
-                  );
+                  void (async () => {
+                    try {
+                      await deletePlayerFn({ data: e.id });
+                    } catch {
+                      deletePlayer(e.id);
+                    }
+                    afterReset();
+                    setMsg(
+                      t(`ลบ ${e.name} แล้ว`, `Deleted ${e.name}`),
+                    );
+                  })();
                 }}
               >
                 <Trash2 className="size-4" />
