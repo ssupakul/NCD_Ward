@@ -1,0 +1,4 @@
+# Cloudflare Pages — allow server functions / API
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff

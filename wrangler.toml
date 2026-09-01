@@ -1,0 +1,13 @@
+# Cloudflare Pages — use with: npm run build:cloudflare
+# Then connect this repo in Cloudflare Pages, or:
+#   npx wrangler pages deploy dist
+#
+# Set secret / env in Cloudflare dashboard:
+#   DATABASE_URL = postgresql://...neon.tech/neondb?sslmode=require
+
+name = "ncd-ward"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Nitro cloudflare-pages output (TanStack Start)
+pages_build_output_dir = "dist"
